@@ -1,0 +1,93 @@
+variable v equal 3
+variable dt equal 1
+variable t equal 300
+
+units               real    
+dimension           3   
+newton off
+processors          * * 2
+boundary p p f
+atom_style          full 
+
+
+pair_style          lj/cut/coul/long 12.0
+pair_modify         mix arithmetic
+bond_style          harmonic
+angle_style         harmonic
+kspace_style        pppm/conp 1.0e-7
+kspace_modify       slab 3.0
+
+
+read_data   premd.data
+
+mass 1 12 
+mass 2 15.99940 
+mass 3 1.00800 
+mass 4 1.0e-100   
+mass 5 39.0983 
+mass 6 79.904 
+
+set type 1 charge  0.00
+set type 2 charge  0.00
+set type 3 charge  0.5564
+set type 4 charge -1.1128
+set type 5 charge  0.85
+set type 6 charge -0.85
+
+pair_coeff 1 1 0.0583628 3.5751 
+pair_coeff 2 2 0.1852 3.1589 
+pair_coeff 3 3 0.0000 1.0000 
+pair_coeff 4 4 0.0000 1.0000 
+pair_coeff 5 5 0.47460325 2.3014  
+pair_coeff 6 6 0.026958652008 4.82525 
+pair_coeff 2 5 0.3347108 2.8904  
+pair_coeff 5 6 0.1018021 3.79879  
+pair_coeff 2 6 0.0239 4.1985  
+
+variable    etype equal 1
+group       ele type ${etype}
+group       h2o type 2:4
+group       sol type 2:6
+group       ion type 5:6
+
+region upper block $(xlo) $(xhi) $(ylo) $(yhi) 0 $(zhi) 
+region lower block $(xlo) $(xhi) $(ylo) $(yhi) $(zlo) 0  
+group lowerAll region lower
+group upperAll region upper
+group ele_lw intersect ele lowerAll
+group ele_up intersect ele upperAll
+
+group lowerAll delete
+group upperAll delete
+region upper delete
+region lower delete
+
+
+neighbor        2.0 bin
+
+variable q atom q
+group eleall        union ele_lw ele_up
+compute qleft       ele_lw reduce sum v_q
+compute qright      ele_up reduce sum v_q
+compute qall        eleall reduce sum v_q
+compute tempsol     sol temp
+
+run_style           verlet
+
+velocity ele set 0.0 0.0 0.0
+
+fix e ele_lw conp 1 ele_up 1.979 $v conp.log etypes 1 ${etype} pppm
+
+fix 1 h2o rigid/nvt/small molecule temp 300 300 100.0
+fix 2 ion nvt temp 300 300 100.0
+
+thermo 20
+thermo_style custom step temp c_tempsol c_qleft c_qright f_e
+
+dump dsys all custom 2000 traj.dump id type xu yu zu q
+dump_modify dsys format line '%d %d %13.8g %13.8g %13.8g %13.8g' sort id
+
+timestep    $(dt)
+restart 2000000 restart.*
+
+run 30000000
